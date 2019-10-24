@@ -1,0 +1,14 @@
+#!/bin/bash
+module load exfel exfel_anaconda3 
+
+# This is pointing still to software installed for the xfel2013 experiment
+#export PATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/bin:$PATH
+#export PYTHONPATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/lib/python2.7/site-packages:$PYTHONPATH
+#export PYTHONPATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/lib/python3.5/site-packages:$PYTHONPATH
+#export PYTHONPATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/spimage/:$PYTHONPATH
+#export LD_LIBRARY_PATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/lib64:$LD_LIBRARY_PATH
+#export C_INCLUDE_PATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/include:$C_INCLUDE_PATH
+#export CPLUS_INCLUDE_PATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/python-packages/include:$CPLUS_INCLUDE_PATH
+
+# This is pointing still to the hummingbird installed for the xfel2013 experiment
+export PATH=/gpfs/exfel/exp/SPB/201701/p002013/usr/Software/hummingbird:$PATH
