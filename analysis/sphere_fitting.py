@@ -113,7 +113,7 @@ with sparse.SmallFrame(infile, geometry="../geometry/b3_lowq.geom", mode="r+") a
 
 
         # ## Step 3. Fitting size/intensity
-        output = optimize.brute(costfunc1, [(50e-9,450e-9)], args=(data_r, mask_qr), Ns=500, full_output=True)
+        output = optimize.brute(costfunc1, [(20e-9,320e-9)], args=(data_r, mask_qr), Ns=300, full_output=True)
         diameter = output[0]
         res = optimize.minimize(costfunc2, [intensity_start], args=(data_r, mask_qr, diameter), 
                                 method="Powell", tol=None, options={'disp':False})
