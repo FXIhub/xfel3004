@@ -10,7 +10,7 @@ import numpy as np
 
 class Run:
     """A wrapper for the sparse HDF5 file for a specific run."""
-    def __init__(self, filename):
+    def __init__(self, filename, mode="r"):
         """
         Parameters
         ----------
@@ -18,8 +18,9 @@ class Run:
             Path to sparse HDF5 file
         """
         self.fname = filename
+        self.mode = mode
     def __enter__(self):
-        self._handle = h5py.File(self.fname, 'r')
+        self._handle = h5py.File(self.fname, self.mode)
         self._numpix = self._handle['num_pix'][0]
         return self
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -187,4 +188,70 @@ class Powder(Frame):
             else:
                 p += self.modules(f)
         return p
+
+
+class SmallFrame(Run):
+    """A wrapper for extracting frames from sparse HDF5 files."""
+    def __init__(self, filename, geometry=None, goodmask=None, mode="r"):
+        """
+        Parameters
+        ----------
+        filename : str
+            Path to sparse HDF5 file
+        geometry : str
+            Path to Cheetah-style geometry file
+        goodmask : str 
+            Path to HDF5 good-pixel mask file
+            must have a dataset 'data/data' with shape (4,128,128)
+        """
+        Run.__init__(self, filename, mode=mode)
+        self.geom = geometry
+        if geometry is not None:
+            self.x, self.y = geom.pixel_maps_from_geometry_file(self.geom)
+        if goodmask is None:
+            self.goodmask = np.ones((4,128,128), dtype=np.bool)
+        else:
+            self.goodmask = goodmask
+        assert self.goodmask.shape == (4,128,128), "Mask should have shape (4,128,128)"
+
+    def trainId(self, i):
+        """Train ID for specific event."""
+        return self._handle['id/trains'][i]
+    def cellId(self, i):
+        """Cell ID for specific event."""
+        return self._handle['id/cells'][i]
+    def pulseId(self, i):
+        """Pulse ID for specific event."""
+        return self._handle['id/pulses'][i]
+    def modules(self, i):
+        """
+        Returns module array for given event index
+        with shape (4,128,128)
+        """
+        frame = np.zeros(self._numpix, dtype=np.int64)
+        frame[self._handle['place_ones'][i]] = 1
+        frame[self._handle['place_multi'][i]] = self._handle['count_multi'][i]
+        return np.transpose(frame.reshape((4,128,128)),axes=(0,2,1))
+    def _modules_for_geom(self, i):
+        frame = np.zeros(self._numpix, dtype=np.int64)
+        frame[self._handle['place_ones'][i]] = 1
+        frame[self._handle['place_multi'][i]] = self._handle['count_multi'][i]
+        return frame.reshape((4,128,128))
+    def assembled(self, i):
+        """Returns assembled frame for given event."""
+        if self.geom is None:
+            print("Cannot provide assembled image, no geometry has been provided")
+        return geom.apply_geom_ij_yx((self.y, self.x), self._modules_for_geom(i))[::-1,::-1]
+    @property
+    def activepixels(self):
+        """assembled boolean image with active pixels = True."""
+        if self.geom is None:
+            print("Cannot provide active-pixel mask, no geometry has been provided")
+        return geom.apply_geom_ij_yx((self.y, self.x), np.ones((4,128,128), dtype=np.bool))[::-1,::-1]
+    @property
+    def goodpixels(self):
+        """assembled boolean image with good pixels = True."""
+        if self.geom is None:
+            print("Cannot provide good-pixel mask, no geometry has been provided")
+        return geom.apply_geom_ij_yx((self.y, self.x), np.transpose(self.goodmask, axes=(0,2,1)))[::-1,::-1]
     
