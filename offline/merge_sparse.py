@@ -20,7 +20,7 @@ parser.add_argument('-o', '--out_folder', help='Path to output folder',
 args = parser.parse_args()
 
 post_tag = '_lowq.h5'
-det = detector.Detector('/gpfs/exfel/exp/SPB/201802/p002160/scratch/ayyerkar/det/det_2160'+post_tag)
+det = detector.Detector('../geometry/det'+post_tag)
 chunked_flist = sorted(glob.glob(os.path.join(args.path, '*r%04d_*'%args.run)))
 print('Merging the following files:', chunked_flist)
 chunked_emc = reademc.EMCReader(chunked_flist, det)
