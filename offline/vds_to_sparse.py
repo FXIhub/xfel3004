@@ -81,7 +81,7 @@ class AGIPD_VDS_Calibrator():
         data[badpix != 0] = 0
         return data
     
-    def _calibrate_module(self, data, gain, module, cell, cmode=True, photonThresh=0.75):
+    def _calibrate_module(self, data, gain, module, cell, cmode=False, photonThresh=0.75):
         if np.all(data == 65535):
             data[:] = np.nan
             return data
