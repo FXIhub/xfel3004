@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 '''
 Create calibrated shots and powder sums from AGIPD VDS files
 Author: Jonas Sellberg, Kartik Ayyer
@@ -106,6 +108,8 @@ class AGIPD_VDS_Calibrator():
         if self.verbose > 1:
             print('Setting %d pixels below photon threshold to zero for module %d' % (((data < photonThresh*45*gain) & (data > 0)).sum(), module))
         data[data < photonThresh*42*gain] = 0
+        #data[data > 10000] = 10000
+
         return data
 
     def _threshold(self, gain, module, cell):        
@@ -121,12 +125,6 @@ class AGIPD_VDS_Calibrator():
             if n > self.nframes or n < 0:
                 print('Out of range: %d, skipping event..' % n)
                 num = np.delete(num, np.where(num == n))
-            elif (self.vds[self.cell_name][n] == 65535):
-                print('Missing cell for event: %d, skipping event..' % n)
-                num = np.delete(num, np.where(num == n))
-        # Any frames left?
-        if not num.shape[0]:
-            return
         # frame or frames?
         if num.shape[0] > 1:
             self.frame = np.empty((num.shape[0],16,512,128))
@@ -171,7 +169,7 @@ class AGIPD_VDS_Calibrator():
                     else:
                         self.frame = data[:]
         if not assemble or self.geom_fname is None:
-            return self.frame
+            return np.copy(self.frame)
         else:
             if num.shape[0] > 1:
                 output = []
@@ -235,6 +233,104 @@ class AGIPD_VDS_Calibrator():
         for k,cell in enumerate(self.good_cells):
             if self.is_raw_data:
                 np_powder[k,i] += self.vds[self.dset_name][i][cell::self.num_h5cells,0,:,:].sum(0)
+                #np_powder[k,i] += self._calibrate_powder(self.vds[self.dset_name][i][cell::self.num_h5cells,0,:,:].sum(0), i, cell, nframes=self.npowder[k])
+                #np_powder[k,i] += self.vds[self.dset_name][i][cell::self.num_h5cells,0,:,:].sum(0)
             else:
                 np_powder[k,i] += self.vds[self.dset_name][i][cell::self.num_h5cells,:,:].sum(0)
-                
+        
+
+
+def write_chunk(args, chunk, frames, vds_fname):
+
+    import sys
+    import glob
+    # The following line works on Maxwell
+    sys.path.append('/home/ayyerkar/.local/dragonfly/utils/py_src')
+    import writeemc
+    import os
+
+
+    if 0 <= args.res < 3:
+        post_tag = ['_lowq.h5', '_medq.h5', '_allq.h5'][args.res]
+        # Module order matches geometry file
+        modules = [[3,4,8,15], [2,3,4,5,9,8,15,14], np.arange(16)][args.res]
+        subset = [128, 256, 0][args.res]
+        num_pix = [4*128*128, 4*256*256, 4*512*512][args.res]
+    else:
+        print('"res" parameter can only have values 0, 1 or 2')
+        sys.exit(1)
+
+    shift = args.threshold - 0.5
+    emcfile = os.path.join(args.out_folder, "r%04d_%04d" %(args.run, chunk) + post_tag)
+    emc = writeemc.EMCWriter(emcfile, num_pix)
+    photon_ADU = 45.
+
+    print('Calibrating virtual data set for run %d' % args.run)
+    with AGIPD_VDS_Calibrator(vds_fname, good_cells=np.where(good_cells)[0], calib_run=args.calib_run, verbose=int(args.verbose)) as c:
+        print('Calibrating %s frames from run %d' % (len(frames), args.run))
+        frame = c.get_frame(frames, calibrate=True, assemble=False)
+        print('Converting %d frames from run %d' % (len(frames), args.run))
+        nframes = frame.shape[0]
+        for i in range(nframes):
+            emc.write_frame(np.round(frame[i][modules,-subset:]/photon_ADU - shift).ravel().astype('i4'))
+            sys.stderr.write('\r%d/%d'%(i+1, nframes))
+        sys.stderr.write('\n')
+    emc.finish_write()
+    os.system('chmod ao+rw %s' % (emcfile))
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='Create calibrated AGIPD VDS files')
+    parser.add_argument('run', help='Run number', type=int)
+    parser.add_argument('-c', '--chunk', help='Chunk size (default=2000)', type=int, default=2000)
+    parser.add_argument('-C', '--calib_run', help='Calibration run number (default:latest)', default=None)
+    parser.add_argument('-v', '--verbose', help='Output additional information (default=False)', default=False, action='store_true')
+    parser.add_argument('-s', '--skip', help='Skip pulses', default=1, type=int)
+    parser.add_argument('-m', '--max_pulses', help='Maximum nr. of pulses', default=176, type=int)
+    parser.add_argument('-r', '--res', help='Resolution to save to (0=lowq, 1=medq, 2=allq). Default=0', type=int, default=0)
+    parser.add_argument('-o', '--out_folder', help='Path to output folder')
+    parser.add_argument('-t', '--threshold', help='Photon conversion threshold (fraction of photon). Default=0.7', type=float, default=0.7)
+    args = parser.parse_args()
+
+    npulses = 128
+    pulseskip = args.skip
+    maxpulse = args.max_pulses
+    good_cells = np.zeros(npulses ,dtype=np.bool)
+    good_cells[1:pulseskip*maxpulse+1:pulseskip] = True
+    good_cells[18::32] = False
+
+    import os, sys
+    hlname = '/gpfs/exfel/exp/SPB/201901/p002316/scratch/litpixels/r%04d_hits.h5' % args.run
+    if not os.path.exists(hlname):
+        print('No hitlist available, run: python litpixels.py r%04d_vds_raw.h5' % args.run)
+        sys.exit(0)
+    else:
+        with h5py.File(hlname, 'r') as hl:
+            lp = hl['litpixels_15'][:]
+            print(list(hl))
+            bin_values, bin_edges = np.histogram(lp, bins=(lp.max()-lp.min())); 
+        bin_centers = np.array([(bin_edges[i] + bin_edges[i+1])/2 for i in range(len(bin_values))])
+            
+        good_data = lp.reshape(-1,128)
+        good_data = good_data[:,good_cells].ravel()
+        sel = ((good_data > 0) & (good_data < 25000))
+        med = np.median(good_data[sel])
+        for _ in range(10):
+            sigma = good_data[sel].std()
+            sel = (np.abs(good_data-med) < 3*sigma)
+        threshold = med + 3*sigma
+        print('threshold =', threshold)            
+        frames = np.where((lp > threshold) & (lp < 25000))[0]
+        print('Found %d hits above lit-pixel threshold' % len(frames))    
+    vds_fname = '/gpfs/exfel/exp/SPB/201901/p002316/scratch/vds/r%04d_vds_raw.h5' % args.run
+
+    from mpi4py import MPI
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
+    nchunks = len(frames)//args.chunk+1
+    for i in range(nchunks)[rank::size]:
+        print("rank %d is running on %d hits and saving into chunk %d" %(rank, frames[i*args.chunk:(i+1)*args.chunk].shape[0], i))
+        write_chunk(args, i, frames[i*args.chunk:(i+1)*args.chunk], vds_fname)
