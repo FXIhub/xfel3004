@@ -30,7 +30,7 @@ else
     for RUNNUM in $(seq $STARTNUM $ENDNUM);
     do
 	echo "#!/bin/sh" > calibvds.sh
-	echo "#SBATCH --job-name=run"$RUNUM"_hits" >> calibvds.sh
+	echo "#SBATCH --job-name=run"$RUNNUM"_hits" >> calibvds.sh
 	echo "#SBATCH -p upex --time=10:00:00" >> calibvds.sh
 	echo "#SBATCH -o "$DIRLOGS"run"$RUNNUM"_%j.out" >> calibvds.sh
 	echo "#SBATCH -e "$DIRLOGS"run"$RUNNUM"_%j.err" >> calibvds.sh
@@ -38,6 +38,8 @@ else
 	echo 'HOST=`hostname`' >> calibvds.sh
 	echo 'echo "Node: $HOST"' >> calibvds.sh
 	echo 'echo "Submitted by: $USER"' >> calibvds.sh
+	echo 'TIME=`date`' >> calibvds.sh
+	echo 'echo "Submitted at: $TIME"' >> calibvds.sh
 	echo "" >> calibvds.sh  
 	echo 'echo "Running calib_vds.py.."' >> calibvds.sh
 	#echo "python calib_vds.py $RUNNUM -v -t 5000" >> calibvds.sh # TODO: implement adaptive threshold
