@@ -144,6 +144,9 @@ class AGIPD_VDS_Calibrator():
             return
         data = self.vds[self.dset_name][:,num]
         for n in range(num.shape[0]):
+            if (self.cell_ids[n] >= self.num_h5cells):
+                print('Frame has invalid cellId=%d' % self.cell_ids[n])
+                continue
             if self.verbose:
                 print('Getting frame with cellId=%d, pulseId=%d and trainId=%d' % (self.cell_ids[n], self.pulse_ids[n], self.train_ids[n]))
             if calibrate:
@@ -248,6 +251,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--proc', help='If processed data (default=False)', action='store_true', default=False)
     parser.add_argument('-P', '--plot', help='Plot the first X number of hits (default=0)', type=int, default=0)
     parser.add_argument('-o', '--out_folder', help='Path of output folder (default=/gpfs/exfel/exp/SPB/201901/p002316/scratch/hits/)', default='/gpfs/exfel/exp/SPB/201901/p002316/scratch/hits/')
+    parser.add_argument('-m', '--module', help='Module used for lit pixels (default=15)', type=int, default=15)
     parser.add_argument('-t', '--threshold', help='Lit pixel threshold (default=None)', type=float, default=None)
     parser.add_argument('-v', '--verbose', help='Output additional information (default=False)', default=False, action='store_true')
     args = parser.parse_args()
@@ -255,7 +259,7 @@ if __name__ == '__main__':
     import os
     threshold = args.threshold
     if args.frames is None:
-        hlname = '/gpfs/exfel/exp/SPB/201901/p002316/scratch/hitlist/r%04d_hits.h5' % args.run
+        hlname = '/gpfs/exfel/exp/SPB/201901/p002316/scratch/litpixels/r%04d_hits.h5' % args.run
         if not os.path.exists(hlname):
             print('No hitlist available, run: python litpixels.py r%04d_vds_raw.h5' % args.run)
             frames = None
@@ -263,33 +267,44 @@ if __name__ == '__main__':
         else:
             from matplotlib import pyplot as plt
             hl = h5py.File(hlname, 'r')
-            lp = hl['litpixels_04'][:]
+            lp = hl['litpixels_%02d' % args.module][:]
             bin_values, bin_edges = np.histogram(lp, bins=int(lp.max()-lp.min()+1)); 
             bin_centers = np.array([(bin_edges[i] + bin_edges[i+1])/2 for i in range(len(bin_values))])
 
             if args.threshold is None:
-                # plot to determine threshold
-                fig = plt.figure(num=None, figsize=(13.5, 5), dpi=100, facecolor='w', edgecolor='k')
-                canvas = fig.add_subplot(121)
-                canvas.plot(lp, '.')
-                plt.suptitle('run %d' % args.run)
-                plt.title('lit pixels in module 4 - common-mode corrected')
-                plt.xlabel('shot number')
-                plt.ylabel('number of lit pixels')
-                canvas = fig.add_subplot(122)
-                canvas.plot(bin_centers, bin_values, 'k')
-                plt.yscale('log')
-                plt.title('lit-pixel histogram')
-                plt.ylabel('frequency')
-                plt.xlabel('number of lit pixels')
-                plt.savefig('run%d_lit_pixels.png' % args.run)
-                print('Saved figure: run%d_lit_pixels.png' % args.run)
-                plt.show()
-                threshold = int(input("Lit-pixel threshold? "))
+                # calculate threshold
+                t_min, t_max = 0.22, 0.8 # fraction of data used to calculate threshold
+                lp_sorted = np.sort(lp)
+                m = np.median(lp_sorted[int(len(lp_sorted)*t_min):int(len(lp_sorted)*t_max)])
+                s = lp_sorted[int(len(lp_sorted)*t_min):int(len(lp_sorted)*t_max)].std()
+                threshold = m+10*s
+                if args.plot > 0:
+                    # plot to determine threshold
+                    fig = plt.figure(num=None, figsize=(13.5, 5), dpi=100, facecolor='w', edgecolor='k')
+                    canvas = fig.add_subplot(121)
+                    canvas.plot(lp, '.')
+                    plt.hlines(threshold, 0, len(lp), colors='r', linestyles='--')
+                    plt.suptitle('run %d' % args.run)
+                    plt.title('lit pixels in module %02d - common-mode corrected' % args.module)
+                    plt.xlabel('shot number')
+                    plt.ylabel('number of lit pixels')
+                    canvas = fig.add_subplot(122)
+                    canvas.plot(bin_centers, bin_values, 'k')
+                    plt.vlines(threshold, 3e-1, bin_values.max(), colors='r', linestyles='--')
+                    plt.yscale('log')
+                    plt.title('lit-pixel histogram - threshold=%.0f ADU' % threshold)
+                    plt.ylabel('frequency')
+                    plt.xlabel('number of lit pixels')
+                    plt.savefig('run%d_lit_pixels.png' % args.run)
+                    print('Saved figure: run%d_lit_pixels.png' % args.run)
+                    plt.close()
+                    #plt.show()
+                    sys.exit()
+                    #threshold = int(input("Lit-pixel threshold? "))
             else:
                 threshold = args.threshold
             frames = np.where(lp > threshold)[0]
-            print('Found %d hits above lit-pixel threshold' % len(frames))
+            print('Found %d hits above lit-pixel threshold = %.0f ADU' % (len(frames), threshold))
     else:
         hl = None
         frames = None

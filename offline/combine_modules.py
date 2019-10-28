@@ -20,7 +20,7 @@ class AGIPD_Combiner():
     Then use get_frame(num) to get specific frame
     '''
     def __init__(self, run, raw=True, calib_run=None, good_cells=range(176), verbose=0,
-            geom_fname='/gpfs/exfel/exp/SPB/201901/p002316/scratch/ayyerkar/ana/geometry/b1.geom'):
+            geom_fname='../geometry/e2.geom'):
         self.num_h5cells = 176
         self.verbose = verbose
         self.good_cells = np.array(good_cells)
@@ -32,7 +32,7 @@ class AGIPD_Combiner():
         if self.is_raw_data and calib_run is None:
             calib_glob='/gpfs/exfel/exp/SPB/201901/p002316/usr/Shared/calib/latest/Cheetah*.h5'
         elif self.is_raw_data:
-            calib_glob='/gpfs/exfel/exp/SPB/201901/p002316/usr/Shared/calib/r%.4d/Cheetah*.h5'%calib_run
+            calib_glob='/gpfs/exfel/exp/SPB/201901/p002316/usr/Shared/calib/r%.4d/Cheetah*.h5' % calib_run
         self._make_flist(run, calib_glob)
         self._get_nframes_list()
         self.frame = np.empty((16,512,128))
