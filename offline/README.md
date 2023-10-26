@@ -1,132 +1,51 @@
-3# Offline data access
+# Offline analysis for p002601
+Here are some notes on analyzing data from p002601
 
-To access the offline computer cluster, login to the display gateway of the Maxwell cluster:
-
+## Environment
+We are using a custom conda environment for our analysis. Run the following command to get the environment:
 ```
-ssh -X <upex account>@max-display.desy.de
+source source_this_at_euxfel
 ```
+in the root directory of this repository.
 
-You will need X11 forwarding (using e.g. XQuartz) to be able to display graphics from the login node on your screen.
+## Primary pipeline
+The pipeline will be based on processing runs using a series of python scripts over SLURM. 
 
-Don't run big jobs on the login nodes. The Maxwell cluster uses Slurm to submit analysis jobs to the cluster, use the `upex` partition for XFEL analysis. To submit a job and view its status:
+The SLURM scripts in `offline/slurm/` are to be run in the following order on a given signal run:
 
+ 1. `vds_array.sh` - Generate virtual dataset (VDS) files for runs which virtually combine and synchronize the different DSSC modules
+ 2. `litpixels_array.sh` - Calculate number of pixels in each frame with at least 1 photon in the inner region of the detector
+ 3. `save_hits.sh` - Save the hits from the litpixels metric into an EMC-format file for additional analysis
+ 4. `crop_dragonfly.sh` - Generate 'lowq' and 'medq' EMC files to analyze only inner parts of detector
+ 
+For dark runs:
+
+ 1. `proc_darks_array.sh` - Generate dark calibration constants (no VDS needed)
+
+For sucrose runs:
+
+After having run `litpixels_array.sh` on a sucrose run you can do the following steps for a size of fluence estimate from the hits:
+
+ 1. `radialavg_array.sh` - Calculates radial averages for all the hits.
+ 2. `sizing_fast.sh` - Fit sizes and estimate fluences and anisotropy (lack of sphericity) for all the hits.
+
+The dark runs need to be processed before running any of the steps past Step 2 for signal runs
+
+## Data explorer
+A short wrapper class is provided to make it convenient to explore the data interactively here:
 ```
-sbatch -p upex <job command>
-squeue -u <upex account>
+offline/explorer.py
 ```
+This class can be used to look at data and come up with further analyses, which can then be incorporated into scripts for batch-processing.
 
-To allocate an analysis node that you can use interactively, type:
-
+## Dragonfly classification and analysis
+To perform reconstructions using Dragonfly, first create a reconstruction directory
 ```
-srun -p upex -t 10:00:00 --pty $SHELL -i
+$ module load dragonfly
+$ dragonfly_init -t <tag>
 ```
-
-You can find more useful Slurm commands here:
-
-http://xray.bmc.uu.se/~filipe/admin/davinci_user.html
-
-You can find more info about offline data analysis at EuXFEL here:
-
-http://www.desy.de/~barty/cheetah/Cheetah/EuXFEL_data_analysis.html
-
-## Clone this repository
-
-To get access to the analysis scripts in this repository, create a folder and clone the repository:
-
+This creates a template directory which can then be used as usual. In order to submit jobs on SLURM, copy the following template
 ```
-git clone https://github.com/FXIhub/xfel2316.git
-
+offline/slurm/dragonfly_template.sh
 ```
-
-This clones the repository to the current folder using HTTPS, which is fine for read access. To get write access to the repository, setup your SSH keys properly and do instead:
-
-```
-git clone git@github.com:FXIhub/xfel2316.git
-```
-
-Before you start performing your analysis, don't forget to load the proper modules:
-
-```
-source xfel2316/source_this_at_euxfel
-```
-
-## Experiment folder
-
-Once you login to the cluster you will start in your home directory. To go to the experiment directory, write:
-
-```
-cd /gpfs/exfel/exp/SPB/201901/p002316
-```
-
-This contains the `proc` folder for processed runs, `raw` folder for raw data runs, `usr` for smaller user files like software and calibration files and `scratch` for larger data files. Please make a folder in `scratch` with your UPEX user name and place your analysis output for the experiment there:
-
-```
-cd scratch
-mkdir <upex account>
-```
-
-For sharing files with other users, please make sure they have the correct permissions, which if you're being lazy means:
-
-```
-chmod 755 *
-```
-
-## Module combiner
-
-AGIPD data is written in separate files for each module. The `combine_modules`
-python script combines the data from different modules and applies detector
-calibrations resulting in a detector image for a given run number and frame number.
-
-### Usage
-
-Here is some basic usage inside an `ipython` console.
-```python
-import combine_modules
-c = combine_modules.AGIPD_Combiner(18) # For run 18 with AgBe data
-frame = c.get_frame(8730, calibrate='true') # For frame number 8730
-
-# For XFEL-calibrated data (from the /proc folder)
-c = combine_modules.AGIPD_Combiner(18, raw=False)
-frame = c.get_frame(8730)
-```
-
-Note that the frame numbers are of just the cells which contain data. Thus, in 
-this experiment, there are currenty 176 frames per train, resulting in 1760 indices per second
-
-## Cheetah
-
-See online documentation for Cheetah at EuXFEL:
-
-http://www.desy.de/~barty/cheetah/Cheetah/At_EuXFEL.html
-
-## VDS files
-An alternate way to look at the data is to use the virtual data set (VDS) feature of HDF5. These files can be generated with the `vds.py` script in this folder. Some runs should already be converted in the `/scratch/vds/` folder. These files have all the modules for a given train in the same dataset slice. Thus, one can use the simple HDF5/h5py API to access the data for a given frame.
-
-```
-$ h5ls -r r0018_vds_raw.h5
-/                        Group
-/INSTRUMENT              Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1 Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image/data Dataset {16, 173008, 2, 512, 128}
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image/trainId Dataset {173008}
-
-$ h5ls -r r0018_vds_proc.h5
-/                        Group
-/INSTRUMENT              Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1 Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image Group
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image/data Dataset {16, 173008, 512, 128}
-/INSTRUMENT/SPB_DET_AGIPD1M-1/DET/image/trainId Dataset {173008}
-```
-The extra dimension in the raw data has the gain (digital) data for the frame.
-
-## Hitfinding
-The virtual data sets can be used for hitinding with the `litpixels.py` and `calib_vds.py` scripts in this folder. The `litpixels.py` script produces an HDF5 file with lit pixel values for all shots, that should be placed in the `/scratch/hitlist/` folder with read permissions to all users `chmod +r /scratch/hitlist/*h5`. They can then be read by the `calib_vds.py` script to determine a hit threshold and calibrate and save the hits.  Some runs should already be converted in the `/scratch/hits/` folder. Example usage:
-
-```
-python litpixels.py /scratch/vds/r0072_vds_raw.h5 -n 40 -m 4 -t 25
-python calib_vds.py 72 -P -v
-```
+to the reconstruction directory. Remember to edit the number of nodes, time limit etc. before submitting.
