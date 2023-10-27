@@ -1,5 +1,5 @@
-# Offline analysis for p002601
-Here are some notes on analyzing data from p002601
+# Offline analysis for p003004
+Here are some notes on analyzing data from p003004
 
 ## Environment
 We are using a custom conda environment for our analysis. Run the following command to get the environment:

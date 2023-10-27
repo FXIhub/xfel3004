@@ -10,7 +10,7 @@ import numpy as np
 import h5py
 from mpi4py import MPI
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
 CHUNK_SIZE = 128
 ADU_PER_PHOTON = 5.
 SIGNAL_ESTIMATE = 1.e-3

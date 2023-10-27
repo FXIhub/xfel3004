@@ -9,7 +9,7 @@
 #SBATCH -o .%j.out
 #SBATCH -e .%j.out
 #SBATCH --partition=upex-beamtime
-#SBATCH --reservation=upex_002601
+#SBATCH --reservation=upex_003004
 
 # Change the runs to process using the --array option on line 3
 # DONT FORGET TO SET THE RIGHT DARK RUN

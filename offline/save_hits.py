@@ -10,7 +10,7 @@ from scipy import optimize
 
 import dragonfly
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/scratch/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/scratch/'
 NCELLS = 400
 NPULSES = 100
 ADU_PER_PHOTON = 5.
@@ -93,7 +93,7 @@ sys.stdout.flush()
 
 # Merge modules
 print('Merging modules')
-det = dragonfly.Detector(PREFIX+'det/det_2601_module.h5')
+det = dragonfly.Detector(PREFIX+'det/det_3004_module.h5')
 emods = [dragonfly.EMCReader(PREFIX+'emc/r%.4d_m%.2d.emc' % (args.run, m), det) for m in range(16)]
 
 wemc = dragonfly.EMCWriter(PREFIX+'emc/r%.4d_allq.emc' % args.run, 1024**2, hdf5=False)

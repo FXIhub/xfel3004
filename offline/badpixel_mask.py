@@ -4,7 +4,7 @@
 import h5py
 import numpy as np
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
 
 def main():
     import argparse
@@ -12,7 +12,7 @@ def main():
     parser.add_argument('dark_run', type=int, help='Dark run number')
     parser.add_argument('-o', '--out_folder', 
                         help='Path of output folder (default=%s/scratch/det/)'%PREFIX,
-                        default=PREFIX+'scratch/det/')
+                        default=PREFIX+'/scratch/det/')
     parser.add_argument('-l', '--low', 
                         help='Minimum sigma for a good pixel',
                         type=float, default=0.5)

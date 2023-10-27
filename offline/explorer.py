@@ -14,7 +14,7 @@ import numpy as np
 import pylab as P
 import h5py
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/scratch/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/scratch/'
 
 sys.path.append(PREFIX+'det')
 

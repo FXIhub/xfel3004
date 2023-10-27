@@ -5,13 +5,13 @@ import numpy as np
 
 import dragonfly
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/scratch/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/scratch/'
 
 parser = argparse.ArgumentParser(description='Generate lowq and medq emc files')
 parser.add_argument('run', help='Run number', type=int)
 args = parser.parse_args()
 
-det = dragonfly.Detector(PREFIX+'det/det_2601_allq01.h5')
+det = dragonfly.Detector(PREFIX+'det/det_3004_allq01.h5')
 emc = dragonfly.EMCReader(PREFIX+'emc/r%.4d_allq.emc'%args.run, det)
 
 wemc = dragonfly.EMCWriter(PREFIX+'emc/r%.4d_lowq.emc'%args.run, 4*128*128, hdf5=False)

@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 import extra_geom
 
-PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/'
+PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
 ADU_PER_PHOTON = 5
 
 class RadialAverage():

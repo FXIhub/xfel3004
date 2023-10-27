@@ -12,7 +12,7 @@ import ctypes
 import numpy as np
 import h5py
 
-EXPT_PREFIX = '/gpfs/exfel/exp/SQS/202102/p002601/'
+EXPT_PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
 DET_NAME = 'SQS_DET_DSSC1M-1'
 CHUNK_SIZE = 32
 
