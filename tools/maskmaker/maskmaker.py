@@ -216,8 +216,9 @@ class Application:
         self.updateDisplayRGB()
 
     def save_mask(self):
+        print('saving good pixels to mask.h5/entry_1/good_pixels')
         with h5py.File('mask.h5', 'w') as f:
-            f['mask'] = self.mask
+            f['entry_1/good_pixels'] = self.mask.reshape(self.data_shape)
         print('Done!')
     
     def mask_ROI(self, roi):
@@ -528,16 +529,13 @@ if __name__ == '__main__':
         mask = np.ones(xyz.shape[1:], dtype=bool)
 
     # if data has a larger dimension than the xyz values then add slider
-    print(data.shape, xyz.shape[1:])
     if len(data.shape) == len(xyz.shape[1:]) :
         Z = 1
         # add a z-index to data
         data = data[None, ...]
     elif len(data.shape) == (1+len(xyz.shape[1:])) :
-        print('hello')
         # check if z-index (frame number) is at 0:
         for dim in range(len(data.shape)) :
-            print(dim, data.shape[dim], xyz.shape[1:])
             if data.shape[dim] not in xyz.shape[1:] and dim > 0 :
                 data = np.swapaxes(data, dim, 0).copy()
                 print(f'swapping axis {dim} and 0 in data. {data.shape}')
