@@ -10,12 +10,13 @@ The boolean mask is saved to:
 ## Installation
 To install dependencies through conda, run:
 ```
-$ module load exfel exfel-python
 $ conda env create -f environment.yml -n maskmaker # takes ages!
 $ conda activate maskmaker 
 ```
 
 ## Example
+exfel-python has all of the dependencies built in:
 ```
-(maskmaker)$ python maskmaker.py /home/amorgan/p003004/scratch/amorgan/scratch/dark/r0290_dark.h5/data/sigma -m badpixel_mask_r0195.h5/entry_1/good_pixels 
+$ module load exfel exfel-python
+$ python maskmaker.py /home/amorgan/p003004/scratch/amorgan/scratch/dark/r0290_dark.h5/data/sigma -m badpixel_mask_r0195.h5/entry_1/good_pixels 
 ```
