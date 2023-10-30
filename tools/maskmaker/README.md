@@ -12,5 +12,5 @@ $ conda activate maskmaker
 
 ## Example
 ```
-# python mask
-
+(maskmaker)$ python maskmaker.py /home/amorgan/p003004/scratch/amorgan/scratch/dark/r0290_dark.h5/data/sigma -m badpixel_mask_r0195.h5/entry_1/good_pixels 
+```
