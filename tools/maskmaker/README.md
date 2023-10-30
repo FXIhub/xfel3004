@@ -7,12 +7,6 @@ The boolean mask is saved to:
     mask.h5
         entry_1/good_pixels
 
-## Installation
-To install dependencies through conda, run:
-```
-$ conda env create -f environment.yml -n maskmaker # takes ages!
-$ conda activate maskmaker 
-```
 
 ## Example
 exfel-python has all of the dependencies built in:
