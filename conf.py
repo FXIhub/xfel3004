@@ -1,196 +1,137 @@
-"""
-For testing the EuXFEL backend, start the karabo server:
-
-./karabo-bridge-server-sim 1234
-    OR
-./karabo-bridge-server-sim -d AGIPDModule -r 1234
-
-from the karabo-bridge (https://github.com/European-XFEL/karabo-bridge-py).
-and then start the Hummingbird backend:
-
-./hummingbird.py -b examples/euxfel/mock/conf.py
-"""
-import plotting.image
-import plotting.line
-# import analysis.agipd
-import analysis.event
-import analysis.hitfinding
-import ipc.mpi
-from backend import add_record
-
 import sys
-sys.path.append("/gpfs/exfel/exp/SQS/202302/p003004/usr/Shared/xfel3004")
-import tools.sizelib
-
-# Testing
-# from backend.euxfel import ureg
-
+import os
 import numpy as np
-import time
-import sys, os; sys.path.append(os.path.split(__file__)[0])
+import h5py
+import extra_geom
+import warnings
 
-# from online_agipd_calib import AGIPD_Calibrator
+
+from hummingbird import plotting
+from hummingbird import analysis
+from hummingbird import ipc
+from hummingbird.backend import add_record
+
+
+from emcwrt import HitSaver
 
 state = {}
-# state['Facility'] = 'EuXFELtrains'
-state['Facility'] = 'EuXFELDSSC'
-# state['EuXFEL/EventIsTrain'] = True
+state['Facility'] = 'EuXFEL'
 state['EventIsTrain'] = True
-
-# state['EuXFEL/DataSource'] = 'tcp://10.253.0.142:6666' # Calibrated
-
-flag_online = False
-flag_cm_correction = True
-
-if flag_online:
-    state['EuXFEL/DataSource'] = "tcp://10.253.0.143:41000"
-else:
-    state['EuXFEL/DataSource'] = 'tcp://localhost:9898' # From file (on exflonc35)
-
-state['EuXFEL/DataFormat'] = 'Calib' # This is very specific to AGIPD, should use a new translator and remove this.
-state['EuXFEL/MaxTrainAge'] = 4e10000000
-#state['EuXFEL/MaxPulses'] = 176
-
+state['EuXFEL/DataSource'] = 'tcp://exflong23-ib:55555'
+state['EuXFEL/DataFormat'] = 'Calib'
+state['EuXFEL/SelModule'] = None
+state['EuXFEL/MaxTrainAge'] = 4e20
 state['EuXFEL/FirstCell'] = 0
+state['EuXFEL/LastCell'] = 799
 
-# Use SelModule = None or remove key to indicate a full detector
-# [For simulator, comment if running with full detector, otherwise uncomment]
-# state['EuXFEL/SelModule'] = 0
+#geom = extra_geom.AGIPD_1MGeometry.from_crystfel_geom('../../geom/motor_p4462_from_3375.geom')
+quad_pos = [
+    (-130, 5),
+    (-130, -125),
+    (5, -125),
+    (5, 5),
+]
+geom = extra_geom.DSSC_1MGeometry.from_quad_positions(quad_pos)
+adu_per_photon = 5.0
 
-detector_distance = 0.55
-wavelength = 1.03e-9
-pixel_size = 204e-6
+prop_dir = "/gpfs/exfel/exp/SQS/202302/p003004"
 
-adu_threshold = 3
-hitscore_threshold = 10
+send_hits = True
+send_powdersum = True
 
-# Ugly assemble function.
-def assemble(data, indices, shape=(1024, 1024), center=None):
-    base_position = {0: (0, 0, False),
-                     1: (0, 128, False),
-                     2: (0, 2*128, False),
-                     3: (0, 3*128, False),
-                     4: (0, -4*128, False),
-                     5: (0, -3*128, False),
-                     6: (0, -2*128, False),
-                     7: (0, -1*128, False),
-                     8: (-512, -1*128, True),
-                     9: (-512, -2*128, True),
-                     10: (-512, -3*128, True),
-                     11: (-512, -4*128, True),
-                     12: (-512, 3*128, True),
-                     13: (-512, 2*128, True),
-                     14: (-512, 1*128, True),
-                     15: (-512, 0*128, True)}
-    if len(data[0].shape) == 3:
-        shape += (data[0].shape[2], )
-    array = np.zeros(shape)
-    mask = np.zeros(shape, dtype="bool8")
+save_hits = False
 
-    if center == None:
-        center = [array.shape[0]//2, array.shape[1]//2]
-    for panel, index in zip(data, indices):
-        xllimit = max(center[0]+base_position[index][0], 0)
-        xloffset = max(0, -(center[0]+base_position[index][0]))
-        xulimit = min(center[0]+base_position[index][0]+panel.shape[0], array.shape[0])
-        xuoffset = max(0, (center[0]+base_position[index][0]+panel.shape[0]) - array.shape[0])
-        yllimit = max(center[1]+base_position[index][1], 0)
-        yloffset = max(0, -(center[1]+base_position[index][1]))
-        yulimit = min(center[1]+base_position[index][1]+panel.shape[1], array.shape[1])
-        yuoffset = max(0, (center[1]+base_position[index][1]+panel.shape[1]) - array.shape[1])
-        step = -1 if base_position[index][2] else 1
-        
-        if xllimit < xulimit and yllimit < yulimit:
-            array[xllimit:xulimit, yllimit:yulimit] = panel[::step, ::step][xloffset:panel.shape[0]-xuoffset, yloffset:panel.shape[1]-yuoffset]
-            mask[xllimit:xulimit, yllimit:yulimit] = True
-    return array, mask
-
+if save_hits:
+    hits_dir = os.path.join(prop_dir, "scratch/emc")
+    hit_saver = HitSaver(0, hits_dir, adu_per_photon, 16*128*512,
+                         [0,8,15], np.s_[:], np.s_[:128], 3*128*128, 500)
 
 def onEvent(evt):
-    # print(list(evt.keys()))
-    # print(list(evt['photonPixelDetectors'].keys()))
-    if not 'DSSC0' in evt['photonPixelDetectors']:
-    # if True:
-        print("No DSSC data, skipping event")
+    sys.stdout.flush()
+    analysis.event.printProcessingRate()
+
+    native_evt = evt._evt
+
+    arbiter = native_evt['SQS_NQS_DSSC/CAL/ARBITER:output']
+    if 'SQS_DET_DSSC1M-1/DET/STACKED:xtdf' not in native_evt:
         return
-    analysis.event.printProcessingRate(pulses_per_event=1)
 
-    print(evt['photonPixelDetectors'].keys())
-    
-    # print(evt['photonPixelDetectors']['DSSC0'].data.shape)
-    # print(evt['photonPixelDetectors']['DSSC7'].data.shape)
-    # print(evt['photonPixelDetectors']['DSSC8'].data.shape)
-    # print(evt['photonPixelDetectors']['DSSC15'].data.shape)
+    det = native_evt['SQS_DET_DSSC1M-1/DET/STACKED:xtdf']
 
-    
-    if flag_online:
-        data = [np.float64(evt['photonPixelDetectors']['DSSC0'].data),
-                np.float64(evt['photonPixelDetectors']['DSSC7'].data)]
-        module_index = [0, 7]
-    else:
-        # assembled_data, mask = assemble([evt['photonPixelDetectors']['DSSC0'].data.transpose(),
-        #                                  evt['photonPixelDetectors']['DSSC7'].data.transpose()],
-        #                                 [0, 7])
-        data = [np.float64(evt['photonPixelDetectors'][f'DSSC{i}'].data.transpose()) for i in range(16)]
-        module_index = list(range(16))
+    hitscores = arbiter['sphits.litpixelCount']
+    hitscoreThreshold = arbiter['sphits.threshold']
+    hit_mask = arbiter['sphits.hits']
+    num_hits = arbiter['sphits.numberOfHits']
+    num_miss = arbiter['sphits.numberOfMiss']
 
-    if flag_cm_correction:
-        for this_data in data:
-            this_data[:, :64, :] -= np.median(this_data[:, :64, :], axis=1)[:, np.newaxis, :]
-            this_data[:, 64:, :] -= np.median(this_data[:, 64:, :], axis=1)[:, np.newaxis, :]
-            # this_data[:, :64, :] -= 100.
-            # this_data[:, 64:, :] -= 50.
-    
-    assembled_data, mask = assemble(data, module_index)
-    assembled = add_record(evt["analysis"], "analysis", "Assembled", assembled_data)
+    # plot hitscore
+    for i in range(hitscores.shape[0]):
+        hitscore_pulse = add_record(evt['analysis'], 'analysis', 'hitscore', hitscores[i])
+        try:
+            plotting.line.plotHistory(hitscore_pulse, group='Hitfinding', hline=hitscoreThreshold, history=10000)
+        except KeyError:
+            print('Timestamp not found')
+            return
 
+    hitscore_mean = add_record(evt['analysis'], 'analysis', 'avg_hitscore', hitscores.mean())
+    plotting.line.plotHistory(hitscore_mean, group='Hitfinding', history=10000)
 
-    analysis.hitfinding.countLitPixels(evt, assembled, aduThreshold=adu_threshold, hitscoreThreshold=hitscore_threshold, stack=True)
-    hitscore = evt["analysis"]["litpixel: hitscore"].data
-    hittrain = np.bool8(evt["analysis"]["litpixel: isHit"].data)
-    
-    for i in range(assembled.data.shape[2]):
-        hitscore_pulse = add_record(evt["analysis"], "analysis", "hitscore", hitscore[i])
-        plotting.line.plotHistory(hitscore_pulse, group="Hitfinding", hline=hitscore_threshold, history=10000)
+    # plot hitrate
+    #hit_mask = (hitscores > hitscoreThreshold)
+    #analysis.hitfinding.hitrate(evt, hit_mask, history=3500)
+    hitrate = add_record(evt['analysis'], 'analysis', 'hitrate', arbiter['sphits.hitrate'] * 100)
 
-    for hit_index in np.arange(len(hittrain))[hittrain]:
-        single_hit = add_record(evt["analysis"], "analysis", "Hit", assembled.data[..., hit_index])
-        plotting.image.plotImage(single_hit, mask=mask[..., hit_index], history=10)
+    if ipc.mpi.is_main_event_reader():
+        plotting.line.plotHistory(evt['analysis']['hitrate'], label='Hit rate [%]', group='Hitfinding')
 
-    all_hits = assembled.data[..., hittrain]
-    mask_hits = mask[..., hittrain]
-    # for i in range(assembled.data.shape[-1]):
-    #     assembled_single = add_record(evt["analysis"], "analysis", "Assembled Single", assembled.data[..., i])
-    #     plotting.image.plotImage(assembled_single, mask=mask[..., i], history=10)
+    hit_ix = np.flatnonzero(hit_mask)
+    num_hits = len(hit_ix)
 
-    size, intensity, ff = tools.sizelib.sizeing(all_hits, mask_hits, wavelength, detector_distance, pixel_size)
-    # print(size)
-    # print(intensity)
-    # print(ff)
-    for i in range(size.shape[-1]):
-        size_record = add_record(evt["analysis"], "analysis", "Sizeing: size", size[i])
-        intensity_record = add_record(evt["analysis"], "analysis", "Sizeing: intensity", intensity[i])
-        plotting.line.plotHistory(size_record, history=10000, group="Sizeing")
-        plotting.line.plotHistory(intensity_record, history=10000, group="Sizeing")
-    
-    # first_module = add_record(evt["analysis"], "analysis", "Single image", evt['photonPixelDetectors']['DSSC0'].data[..., 0])
-    # plotting.image.plotImage(first_module, history=10, name="All images")
-    
-    # dssc = evt['photonPixelDetectors']['DSSC']
-    # dssc_data = evt['photonPixelDetectors']['DSSC'].data
-    
-    # analysis.hitfinding.countLitPixels(evt, dssc, aduThreshold=adu_threshold, hitscoreThreshold=hitscore_threshold, stack=True)
-    # # print(evt["analysis"]["litpixel: hitscore"].data)
-    # hitscore = evt["analysis"]["litpixel: hitscore"].data
-    # hittrain = np.bool8(evt["analysis"]["litpixel: isHit"].data)
+    if send_hits and (num_hits > 0):
+        stacked = det['image.data']
+        #print(np.sum(hitscores > 10))
+        #print(f"Num hits {num_hits}")
+        #print(f"Images shape: {stacked.shape}")
 
-    # first_hitscore = add_record(evt["analysis"], "analysis", "hitscore - first", hitscore[0])
-    # plotting.line.plotHistory(first_hitscore, hline=hitscore_threshold, history=10000)
+        # random hit
+        rnd_i = np.random.choice(num_hits)
+        assem = geom.position_modules_fast(stacked[rnd_i])[0][::-1,::-1]
+        assem[np.isnan(assem)] = -1
+        random_hit = add_record(evt['analysis'], 'analysis', 'Random Hit', assem)
+        plotting.image.plotImage(random_hit, group='Hits', history=10)
 
-    # # for i in range(dssc_data.shape[0]):
-    
-    # print(dssc_data.shape)
-    # for i in range(dssc_data.shape[0]):
-    #     single_dssc = add_record(evt["analysis"], "analysis", "Single image", dssc_data[i, ...])
-    #     plotting.image.plotImage(single_dssc, history=10, name="All images")
+        # brightest hit
+        brt_i = hitscores[hit_ix].argmax()
+        assem = geom.position_modules_fast(stacked[brt_i])[0][::-1,::-1]
+        assem[np.isnan(assem)] = -1
+        brightest_hit = add_record(evt['analysis'], 'analysis', 'Brightest Hit', assem)
+        plotting.image.plotImage(brightest_hit, group='Hits', history=10)
+
+    if save_hits and (num_hits > 0):
+        stacked = det['image.data']
+        hit_saver.write(stacked)
+
+    if send_powdersum:
+        if num_hits > 0:
+            if 'aggregate.sumHits' in det:
+                pw_hits = det['aggregate.sumHits']
+            else:
+                stacked = det['image.data']
+                #stacked[stacked < 0.75 * adus_per_photon] = 0
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=RuntimeWarning)
+                    pw_hits = np.nanmean(stacked, axis=0)
+
+            assem = geom.position_modules_fast(pw_hits)[0][::-1,::-1]
+            assem[np.isnan(assem)] = -1
+            hits_integral = add_record(evt['analysis'], 'analysis', 'Hits integral', assem)
+            plotting.image.plotImage(hits_integral, group='Hits', history=1, sum_over=True)
+            train_integral = add_record(evt['analysis'], 'analysis', 'Train integral', assem)
+            plotting.image.plotImage(train_integral, group='Hits')
+        if num_miss > 0 and 'aggregate.sumMiss' in det:
+            pw_miss = det['aggregate.sumMiss']
+            assem = geom.position_modules_fast(pw_miss)[0][::-1,::-1]
+            assem[np.isnan(assem)] = -1
+            miss_integral = add_record(evt['analysis'], 'analysis', 'Miss integral', assem)
+            plotting.image.plotImage(miss_integral, group='Hits', history=1, sum_over=True)
 
