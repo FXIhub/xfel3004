@@ -14,6 +14,8 @@ from scipy.ndimage import binary_dilation, binary_erosion
 import skimage.measure
 import skimage.segmentation
 
+import time
+
 class Application:
     def __init__(self, data, indices_image_space, background_mask, mask, shape, xy_map, im_shape, d, Z):
         self.Z = Z
@@ -46,6 +48,8 @@ class Application:
         
         self.mask_edges    = False
         self.panel_edges    = edges(shape)
+
+        self.in_replot = False
         
         self.initUI()
         
@@ -208,17 +212,25 @@ class Application:
         self.app.exec_()
 
     def replot_frame(self):
-        i = int(self.vline.value())
-        self.frame_index = i
-        self.data[:] = self.z_data[i].ravel()
-        self.data_max = self.data.max()
-        self.trans[~self.background_mask] = self.data[self.pixel_map]
-        self.updateDisplayRGB()
+        if self.in_replot:
+            return
+        try:
+            self.in_replot = True
+            i = int(self.vline.value())
+            if self.frame_index != i :
+                self.frame_index = i
+                self.data[:] = self.z_data[i].ravel()
+                self.data_max = self.data.max()
+                self.trans[~self.background_mask] = self.data[self.pixel_map]
+                self.updateDisplayRGB()
+        finally:
+            self.in_replot = False
 
     def save_mask(self):
         print('saving good pixels to mask.h5/entry_1/good_pixels')
         with h5py.File('mask.h5', 'w') as f:
             f['entry_1/good_pixels'] = self.mask.reshape(self.data_shape)
+            f['entry_1/bad_pixels'] = ~self.mask.reshape(self.data_shape)
         print('Done!')
     
     def mask_ROI(self, roi):
@@ -267,6 +279,8 @@ class Application:
         self.display_RGB[:, :, 0] = (self.trans * self.trans_mask).reshape(self.im_shape)
         self.display_RGB[:, :, 1] = (self.trans * self.trans_mask).reshape(self.im_shape)
         self.display_RGB[:, :, 2] = (self.trans + (self.data_max - self.trans) * ~self.trans_mask).reshape(self.im_shape)
+        
+        print('data max', self.frame_index, self.data_max)
         
         if auto :
             self.plot.setImage(self.display_RGB)
@@ -406,6 +420,7 @@ class Application:
                     self.updateDisplayRGB()
     
 
+#shape = (16, 128, 512)
 def asic_edges(shape):
     # loop over 2D slabs (edge == False is edge)
     edges = np.ones(shape, dtype=bool)
@@ -443,6 +458,8 @@ def parse_cmdline_args():
     parser.add_argument('data', type=str, help="filename for the hdf5 image file. specify the filename and datapath as e.g. /a/b/c.h5/entry_1/data_1/data")
     parser.add_argument('-g', '--geometry', type=str, help="path to the xyz map for the image e.g. /a/b/c.h5/entry_1/data_1/xyz")
     parser.add_argument('-m', '--mask', type=str, help="path to the h5file of the starting mask")
+    parser.add_argument('-c', '--calc', action='store_true', help="precalculate mask based on mean and std")
+    parser.add_argument('--max', action='store_true', help="show maximum of data along 0 axis")
     return parser.parse_args()
 
 # if fnam is of the type "/loc/filename.h5/dataset"
@@ -504,6 +521,13 @@ def generate_pixel_lookup(xyz):
     # now to map data to 2D image we have:
     # im[~background] = data.ravel()[indices_image_space]
     return indices_image_space, background_mask, shape, (xmin, ymin, dx), im, i, l
+
+def calculate_masks(f):
+    sigma = f['data/sigma'][:]
+    
+    mask = (sigma.mean(1) < 0.2) | (sigma.mean(1) > 1.1)
+    
+    return ~mask
     
     
 if __name__ == '__main__':
@@ -528,6 +552,12 @@ if __name__ == '__main__':
     else :
         mask = np.ones(xyz.shape[1:], dtype=bool)
 
+    if args.calc :
+        print('precalculating mask:')
+        with h5py.File(args.data) as f:
+            mask = calculate_masks(f)
+        print('found', np.sum(~mask), 'bad pixels', mask.shape)
+
     # if data has a larger dimension than the xyz values then add slider
     if len(data.shape) == len(xyz.shape[1:]) :
         Z = 1
@@ -542,6 +572,11 @@ if __name__ == '__main__':
         Z = data.shape[0]
     else :
         print('cannot interpret data shape')
+
+    if args.max :
+        print('setting data to maximum value along zero axis')
+        data = np.max(data, axis=0)[None, ...]
+        print(data.shape)
     
     # generate ND -> 2D lookup table
     indices_image_space, background_mask, im_shape, (xmin, ymin, dx), im, i, l = generate_pixel_lookup(xyz)

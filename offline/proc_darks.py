@@ -16,6 +16,9 @@ EXPT_PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
 DET_NAME = 'SQS_DET_DSSC1M-1'
 CHUNK_SIZE = 32
 
+# the bad modules (4,5,6,7) are not written to file
+BAD_MODULES = (4,5,6,7)
+
 class ProcDarks():
     def __init__(self, run_num, mask_only=False, out_fname=None):
         self.run_num = run_num
@@ -49,9 +52,13 @@ class ProcDarks():
         np_marray = np.frombuffer(marray.get_obj(), dtype='f8').reshape(num_files,16,num_cells,128,512)
         np_sarray = np.frombuffer(sarray.get_obj(), dtype='f8').reshape(num_files,16,num_cells,128,512)
         np_numarray = np.frombuffer(numarray.get_obj(), dtype='i4').reshape(num_files,16,num_cells)
-
-        np_marray = (np_marray*np_numarray[:,:,:,np.newaxis,np.newaxis]).sum(0) / np_numarray.sum(0)[:,:,np.newaxis,np.newaxis]
-        np_sarray = (np_sarray*np_numarray[:,:,:,np.newaxis,np.newaxis]).sum(0) / np_numarray.sum(0)[:,:,np.newaxis,np.newaxis]
+        
+        # hack for bad modules
+        norm = np_numarray.sum(0)[:,:,np.newaxis,np.newaxis]
+        norm[norm==0] = 1
+        
+        np_marray = (np_marray*np_numarray[:,:,:,np.newaxis,np.newaxis]).sum(0) / norm
+        np_sarray = (np_sarray*np_numarray[:,:,:,np.newaxis,np.newaxis]).sum(0) / norm
         np_numarray = np_numarray.sum(0)
 
         with h5py.File(self.out_fname, 'w') as f:
@@ -65,7 +72,7 @@ class ProcDarks():
         mean = f['data/mean'][:]
         sigma = f['data/sigma'][:]
         badpix = np.ones(mean.shape, dtype='u1')
-
+        
         for c in range(mean.shape[1]):
             cmean = mean[:,c]
             # Median and StDev for each cell
@@ -99,6 +106,7 @@ class ProcDarks():
     def _worker(self, rank, marray, sarray, numarray):
         module = rank % 16
         file_ind = rank // 16
+
         fname = sorted(glob.glob(EXPT_PREFIX + '/raw/r%.4d/*DSSC%.2d*.h5'%(self.run_num, module)))[file_ind]
         num_cells = len(self.cellids)
 
@@ -109,6 +117,12 @@ class ProcDarks():
         num = np.frombuffer(numarray.get_obj(), dtype='i4').reshape(-1,16,num_cells)[file_ind,module]
         curr = (num, mean, sigma)
 
+        if module in BAD_MODULES :
+            mean.fill(0)
+            sigma.fill(0)
+            num.fill(0)
+            return
+        
         stime = time.time()
         with h5py.File(fname, 'r') as f:
             dset = f['INSTRUMENT/'+DET_NAME+'/DET/%dCH0:xtdf/image/data'%module]
