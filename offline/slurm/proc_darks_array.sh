@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --array=29
+#SBATCH --array=35,36
 #SBATCH --time=04:00:00
 #SBATCH --partition=upex-beamtime
 #SBATCH --reservation=upex_003004

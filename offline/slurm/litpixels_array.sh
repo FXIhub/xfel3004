@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --array=58
+#SBATCH --array=31,32,33,34
 #SBATCH --time=04:00:00
 #SBATCH --partition=upex-beamtime
 #SBATCH --reservation=upex_003004
@@ -16,7 +16,7 @@ PREFIX=/gpfs/exfel/exp/SQS/202302/p003004
 source /etc/profile.d/modules.sh
 source ${PREFIX}/usr/Shared/xfel3004/source_this_at_euxfel
 
-DARK_RUN=34
+DARK_RUN=29
 
 python ../litpixels.py ${SLURM_ARRAY_TASK_ID} ${DARK_RUN}
 

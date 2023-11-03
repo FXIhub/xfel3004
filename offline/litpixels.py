@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 
 PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
-ADU_PER_PHOTON = 5.
+ADU_PER_PHOTON = 3.
 
 class LitPixels():
     def __init__(self, vds_file, dark_run, nproc=0, thresh=4., chunk_size=32, total_intens=False):

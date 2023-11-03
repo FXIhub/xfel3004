@@ -535,7 +535,7 @@ if __name__ == '__main__':
     
     args.data, args.data_path = get_fnam_and_path(args.data)
     with h5py.File(args.data) as f:
-        data = f[args.data_path][()]
+        data = np.squeeze(f[args.data_path][:600])
     
     if args.geometry is not None :
         args.geometry, args.geometry_path = get_fnam_and_path(args.geometry)
@@ -577,6 +577,7 @@ if __name__ == '__main__':
         print('setting data to maximum value along zero axis')
         data = np.max(data, axis=0)[None, ...]
         print(data.shape)
+        
     
     # generate ND -> 2D lookup table
     indices_image_space, background_mask, im_shape, (xmin, ymin, dx), im, i, l = generate_pixel_lookup(xyz)
