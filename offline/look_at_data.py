@@ -128,7 +128,7 @@ class Application:
             self.plot.setImage(self.display.reshape(self.im_shape), autoRange = False, autoLevels = False, autoHistogramRange = False)
     
 
-def generate_pixel_lookup(xyz):
+def generate_pixel_lookup(xyz, oversampling = 1):
     # choose xy bounds
     xmin = xyz[0].min()
     xmax = xyz[0].max()
@@ -137,7 +137,7 @@ def generate_pixel_lookup(xyz):
     ymax = xyz[1].max()
     
     # choose sampling
-    dx = 177e-6 / 2
+    dx = 177e-6 / oversampling
     
     shape = (int( (xmax-xmin)/dx ) + 2, int( (ymax-ymin)/dx ) + 2)
 
@@ -162,7 +162,7 @@ def generate_pixel_lookup(xyz):
     #l = skimage.measure.label(im, background=-1)
     
     # expand by oversampling rate (to fill gaps)
-    l = skimage.segmentation.expand_labels(im+1, distance = 2)
+    l = skimage.segmentation.expand_labels(im+1, distance = oversampling)
         
     # set background mask
     background_mask = (l.ravel()==0).copy()
@@ -260,9 +260,6 @@ disp = np.zeros((data.shape[0],) + im_shape, dtype=data.dtype)
 for d in range(data.shape[0]):
     data[d] -= dark_dict[cellID[d]]
 
-# save 
-with h5py.File('temp.h5', 'w') as f:
-    f['data'] = data
 
 frame = np.zeros(np.prod(im_shape), dtype=np.float32)
 for d in range(data.shape[0]):
@@ -270,6 +267,51 @@ for d in range(data.shape[0]):
     disp[d] = frame.reshape(im_shape)
 """
 
+# save geometry corrected frames
+"""
+im = np.zeros(background_mask.shape, dtype=np.float32)
+with h5py.File('temp_%.4d.h5'%args.run, 'w') as f:
+    f.create_dataset('images', shape = (1000,) + im_shape, chunks = (1,) + im_shape, compression='gzip', compression_opts=1, dtype=np.uint16)
+    frame = np.empty(np.squeeze(data[0]).shape, dtype=np.float32)
+    for i in tqdm(range(1000)):
+        j = sorted_indices[i]
+        frame[:] = np.squeeze(data[j]) - dark_dict[cellID[j]]
+        
+        im[~background_mask] = frame.ravel()[indices_image_space]
+        f['images'][i] = np.clip(np.round(im.reshape(im_shape)), 0, 512).astype(np.uint16)
+"""
+
+# save plots
+"""
+import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+fig, ax = plt.subplots()
+divider = make_axes_locatable(ax)
+cax = divider.append_axes('right', size='5%', pad=0.05)
+
+# output 20 random subsets
+frame = np.empty(np.squeeze(data[0]).shape, dtype=np.float32)
+im = np.zeros(background_mask.shape, dtype=np.float32)
+print('\n', litpix[-1000:], '\n')
+for i in tqdm(range(100)):
+    k = np.random.randint(0, 1000)
+    j = sorted_indices[k]
+    frame[:] = np.squeeze(data[j]) - dark_dict[cellID[j]]
+    im[~background_mask] = frame.ravel()[indices_image_space]
+    image = np.clip(np.round(im.reshape(im_shape)), 0, 512).astype(np.uint16)[im_shape[0]//4: 3*im_shape[0]//4, im_shape[1]//4: 3*im_shape[1]//4]
+    
+    imax = ax.imshow(image[::-1, ::-1].T, cmap='Greys', vmin = 0, vmax = 20)
+    
+    r = str(args.run).zfill(4)
+    ax.set_title(f'r{r} random selection from 1000 brightest images {i}')
+    
+    fig.colorbar(imax, cax=cax, orientation='vertical')
+    fig.set_size_inches(10, 10)
+    fig.tight_layout()
+    plt.savefig(PREFIX + f'images/image_r%.4d_'%args.run + f'{i}.png')
+    #plt.show()
+"""
 
 #pg.show(disp)
 Application(data, cellID, dark_dict, sorted_indices, indices_image_space, background_mask, xyz, im_shape, (xmin, ymin, dx), litpix)
