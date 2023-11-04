@@ -14,12 +14,14 @@ import h5py
 import numpy as np
 
 PREFIX = '/gpfs/exfel/exp/SQS/202302/p003004/'
-ADU_PER_PHOTON = 3.
+ADU_PER_PHOTON = 5.
 
 class LitPixels():
-    def __init__(self, vds_file, dark_run, nproc=0, thresh=4., chunk_size=32, total_intens=False):
+    def __init__(self, vds_file, dark_run, mask_fnam, bad_cells, nproc=0, thresh=4., chunk_size=32, total_intens=False):
         self.vds_file = vds_file
         self.dark_run = dark_run
+        self.mask_fnam = mask_fnam
+        self.bad_cells = bad_cells
         self.thresh = thresh
         self.total_intens = total_intens
         self.chunk_size = chunk_size # Needs to be multiple of 32 for raw data
@@ -55,7 +57,12 @@ class LitPixels():
             # Get dark for central 4 ASICs of module
             dark = f['data/mean'][module,:,:,:128]
             cells = f['data/cellId'][:]
-        return dark, cells
+
+        with h5py.File(f'{PREFIX}/scratch/det/{self.mask_fnam}', 'r') as f:
+            # Get mask for central 4 ASICs of module
+            mask = f['entry_1/good_pixels'][module,:,:128]
+            
+        return dark, cells, mask
 
     def _part_worker(self, p, m, litpix):
         np_litpix = np.frombuffer(litpix.get_obj(), dtype='u8')
@@ -69,7 +76,7 @@ class LitPixels():
             print('Doing %d chunks of %d frames each' % (num_chunks, self.chunk_size))
             sys.stdout.flush()
 
-        dark, cells = self._parse_darks(m)
+        dark, cells, mask = self._parse_darks(m)
 
         stime = time.time()
         f_vds = h5py.File(self.vds_file, 'r')
@@ -82,13 +89,21 @@ class LitPixels():
             cids = f_vds['entry_1/cellId'][pmin:pmax, m]
             vals = np.array([vals[i] - dark[np.where(cids[i]==cells)[0][0]] for i in range(len(vals))])
 
+            # mask bad cells
+            for i in range(len(vals)):
+                if cids[i] in self.bad_cells :
+                    vals[i] = 0
+
+            # mask bad pixels
+            vals *= mask
+            
             if self.total_intens:
                 phot = np.round(vals/ADU_PER_PHOTON - 0.3).astype('i4')
                 phot[phot<0] = 0
                 np_litpix[pmin:pmax] = phot.sum((1,2))
             else:
-                np_litpix[pmin:pmax] = (vals>self.thresh).sum((1,2))
-
+                np_litpix[pmin:pmax] = ((vals)>self.thresh).sum((1,2))
+            
             etime = time.time()
             if p == 0:
                 sys.stdout.write('\r%.4d/%.4d: %.2f Hz' % (c+1, num_chunks, (c+1)*self.chunk_size/(etime-stime)*self.nproc))
@@ -121,7 +136,7 @@ def main():
                         type=int, default=0)
     parser.add_argument('-m', '--module', nargs='+', 
                         help='Run on only these modules',
-                        type=int, default=[0,7,8,15])
+                        type=int, default=[0,8,15])
     parser.add_argument('-t', '--thresholdADU',
                         help='ADU threshold for lit pixel',
                         type=float, default=4.)
@@ -131,16 +146,22 @@ def main():
     parser.add_argument('-T', '--total_intens',
                         help='Whether to calculate total intensity per module rather than lit pixels',
                         action='store_true')
+    parser.add_argument('--mask', 
+                        help='mask file name in (default=%s/scratch/det/)'%PREFIX,
+                        default='backgroundpixel_mask_r0210.h5')
+    parser.add_argument('--bad_cells', nargs='+', 
+                        help='list of bad cells',
+                        type=int, default=[0, 2, 4, 6, 8, 10, 12, 14, 16, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 810])
     args = parser.parse_args()
-
+        
     vds_file = PREFIX+'scratch/vds/r%.4d.cxi' %args.run
-
+        
     print('Calculating lit pixels from', vds_file)
-    l = LitPixels(vds_file, args.dark_run, nproc=args.nproc, thresh=args.thresholdADU, total_intens=args.total_intens)
+    l = LitPixels(vds_file, args.dark_run, args.mask, args.bad_cells, nproc=args.nproc, thresh=args.thresholdADU, total_intens=args.total_intens)
     print('Running on the following modules:', args.module)
-
+    
     litpixels = np.array([l.run_module(module) for module in args.module])
-
+    
     out_fname = args.out_folder + op.splitext(op.basename(vds_file))[0] + '_events.h5'
     with h5py.File(out_fname, 'a') as outf:
         if args.total_intens:

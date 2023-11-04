@@ -185,10 +185,10 @@ args.mask = PREFIX+'det/badpixel_mask_r%.4d.h5'%args.mask
 if args.litpixels :
     args.litpixels = PREFIX+'events/r%.4d_events.h5'%args.run
     with h5py.File(args.litpixels) as f:
-        litpixels = np.sum(f['/entry_1/litpixels'][()], axis=0)
-        trainID   = f['/entry_1/trainId'][()]
-        pulseID   = f['/entry_1/pulseId'][()]
-        fiducial  = trainID * pulseID
+        litpixels = np.sum(f['/entry_1/total_intens'][()], axis=0)
+        trainID_lit   = f['/entry_1/trainId'][()]
+        pulseID_lit   = f['/entry_1/pulseId'][()]
+        fiducial  = trainID_lit * pulseID_lit
         events    = np.argsort(litpixels)[::-1]
         litpix    = litpixels[events]
         fiducial_lit  = fiducial[events]
@@ -228,7 +228,6 @@ if sort:
         #sorted_indices[i] = np.where(fiducial == fiducial_lit[i])[0]
         sorted_indices[i] = k[ np.searchsorted(fiducial_sorted, fiducial_lit[i]) ]
         #sorted_indices = sorted_indices[::-1]
-
 else :
     sorted_indices = np.arange(data.shape[0])
 
@@ -280,6 +279,22 @@ with h5py.File('temp_%.4d.h5'%args.run, 'w') as f:
         im[~background_mask] = frame.ravel()[indices_image_space]
         f['images'][i] = np.clip(np.round(im.reshape(im_shape)), 0, 512).astype(np.uint16)
 """
+
+# save data
+"""
+frame = np.empty(np.squeeze(data[0]).shape, dtype=np.float32)
+with h5py.File(PREFIX + 'amorgan/corrected_data_hits_%.4d.h5'%args.run, 'w') as f:
+    f.create_dataset('data', shape = (200,) + frame.shape, chunks = (1,) + frame.shape, compression='gzip', compression_opts=1, dtype=np.uint16)
+    
+    imin = 400000
+    for i in tqdm(range(imin, imin+f['data'].shape[0])):
+        j = sorted_indices[i]
+        frame[:] = np.squeeze(data[j]) - dark_dict[cellID[j]]
+        
+        f['data'][i-imin] = np.clip(np.round(frame), 0, 512).astype(np.uint16)
+"""
+
+
 
 # save plots
 """
